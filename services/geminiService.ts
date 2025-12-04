@@ -24,24 +24,18 @@ export const GeminiService = {
         Intenta normalizar las unidades a 'g', 'ml' o 'units'.
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: {
-          parts: [
-            {
-              inlineData: {
-                mimeType: "image/jpeg",
-                data: cleanBase64
-              }
-            },
-            {
-              text: prompt
-            }
-          ]
-        }
-      });
+      const response = await const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const response = await model.generateContent([
+        {
+          inlineData: {
+            mimeType: "image/jpeg",
+            data: cleanBase64
+          }
+        },
+        prompt
+      ]);
 
-      const text = response.text || "[]";
+      const text = response.response.text() || "[]";
       // Clean up markdown code blocks if Gemini adds them
       const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
       
