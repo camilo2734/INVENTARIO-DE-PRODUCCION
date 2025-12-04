@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { InvoiceItem } from "../types";
 
-const ai = new GoogleGenerativeAI({ apiKey: import.meta.env.VITE_API_KEY );
+const ai = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY as string);
 
 export const GeminiService = {
   /**
