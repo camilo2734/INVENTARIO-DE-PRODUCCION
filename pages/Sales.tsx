@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { Product, Sale, Ingredient } from '../types';
-import { Plus, ShoppingCart, AlertOctagon } from 'lucide-react';
+import { Plus, ShoppingCart, AlertOctagon, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export const Sales: React.FC = () => {
@@ -16,10 +16,14 @@ export const Sales: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
+    refreshData();
+  }, []);
+
+  const refreshData = () => {
     setProducts(StorageService.getProducts());
     setIngredients(StorageService.getIngredients());
     setSales(StorageService.getSales().sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
-  }, []);
+  };
 
   const handleAddSale = (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,13 +62,18 @@ export const Sales: React.FC = () => {
     StorageService.addSale(newSale);
     
     // Refresh local list
-    setSales([newSale, ...sales]);
-    // Refresh ingredients to reflect deduction
-    setIngredients(StorageService.getIngredients());
+    refreshData();
     
     setQuantity(1);
     setSelectedProduct('');
     alert(`Venta registrada: ${product.name}`);
+  };
+
+  const handleDeleteSale = (saleId: string) => {
+    if (window.confirm("¿Estás seguro de que deseas eliminar esta venta? El stock de los ingredientes se devolverá al inventario.")) {
+        StorageService.deleteSale(saleId);
+        refreshData();
+    }
   };
 
   const groupedProducts = products.reduce((acc, product) => {
@@ -162,13 +171,14 @@ export const Sales: React.FC = () => {
                 <th className="p-4 font-bold">Producto</th>
                 <th className="p-4 font-bold text-center">Cant.</th>
                 <th className="p-4 font-bold text-right">Total</th>
+                <th className="p-4 font-bold text-center">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {sales.slice(0, 20).map(sale => {
                 const product = products.find(p => p.id === sale.productId);
                 return (
-                  <tr key={sale.id} className="hover:bg-primary-50 transition">
+                  <tr key={sale.id} className="hover:bg-primary-50 transition group">
                     <td className="p-4 text-sm text-slate-500">
                       {new Date(sale.date).toLocaleDateString()} <span className="text-xs ml-1 text-slate-400">{new Date(sale.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     </td>
@@ -182,11 +192,20 @@ export const Sales: React.FC = () => {
                     <td className="p-4 text-right font-bold text-slate-800">
                         {sale.total.toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0 })}
                     </td>
+                    <td className="p-4 text-center">
+                        <button 
+                            onClick={() => handleDeleteSale(sale.id)}
+                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Eliminar venta y devolver stock"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                    </td>
                   </tr>
                 );
               })}
               {sales.length === 0 && (
-                  <tr><td colSpan={4} className="p-12 text-center text-slate-400">Aún no has registrado ventas.</td></tr>
+                  <tr><td colSpan={5} className="p-12 text-center text-slate-400">Aún no has registrado ventas.</td></tr>
               )}
             </tbody>
           </table>

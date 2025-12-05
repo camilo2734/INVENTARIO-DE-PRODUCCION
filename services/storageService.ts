@@ -191,8 +191,42 @@ export const StorageService = {
       });
     }
   },
+  
   getSales: (): Sale[] => {
     return JSON.parse(localStorage.getItem(KEYS.SALES) || '[]');
+  },
+
+  deleteSale: (saleId: string) => {
+    const sales = StorageService.getSales();
+    const saleIndex = sales.findIndex(s => s.id === saleId);
+    
+    if (saleIndex === -1) return;
+
+    const sale = sales[saleIndex];
+    const products = StorageService.getProducts();
+    const product = products.find(p => p.id === sale.productId);
+
+    // 1. Revert Stock (Add ingredients back)
+    if (product) {
+      product.recipe.forEach(item => {
+        const totalRestored = item.quantity * sale.quantity;
+        StorageService.updateStock(item.ingredientId, totalRestored);
+        
+        // Log "Restock" movement
+        StorageService.logMovement({
+          id: Date.now().toString() + Math.random(),
+          date: new Date().toISOString(),
+          type: 'IN', // Treating as IN because stock is returning
+          ingredientId: item.ingredientId,
+          quantity: totalRestored,
+          description: `Corrección Venta: ${sale.quantity}x ${product.name}`
+        });
+      });
+    }
+
+    // 2. Remove Sale record
+    sales.splice(saleIndex, 1);
+    localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
   },
 
   // Movements

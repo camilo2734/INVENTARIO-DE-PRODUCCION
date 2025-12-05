@@ -10,6 +10,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     define: {
+      // Esto permite que el código existente `process.env.API_KEY` funcione en el navegador
+      // Inyectando el valor durante el build/dev time.
+      'process.env.API_KEY': JSON.stringify(env.API_KEY)
     },
     build: {
       outDir: 'dist',
