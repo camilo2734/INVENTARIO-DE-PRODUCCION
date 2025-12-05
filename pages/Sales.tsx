@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { Product, Sale, Ingredient } from '../types';
@@ -94,7 +93,7 @@ export const Sales: React.FC = () => {
                   required
                 >
                   <option value="" className="bg-slate-900 text-slate-400">Seleccionar producto...</option>
-                  {Object.entries(groupedProducts).map(([category, items]) => (
+                  {Object.entries(groupedProducts).map(([category, items]: [string, Product[]]) => (
                     <optgroup key={category} label={category} className="bg-slate-800 text-primary-200 font-bold">
                       {items.map(p => (
                         <option key={p.id} value={p.id} className="bg-slate-900 text-white font-normal">

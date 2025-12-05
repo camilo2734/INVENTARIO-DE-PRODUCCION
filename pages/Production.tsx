@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { Ingredient, MasaRecipe, MasaRecipeItem, ProductionLog, Product } from '../types';
@@ -156,7 +155,7 @@ export const Production: React.FC = () => {
                         onChange={e => setSelectedProductId(e.target.value)}
                       >
                           <option value="">Selecciona un producto...</option>
-                          {Object.entries(groupedProducts).map(([cat, items]) => (
+                          {Object.entries(groupedProducts).map(([cat, items]: [string, Product[]]) => (
                               <optgroup label={cat} key={cat}>
                                   {items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                               </optgroup>
