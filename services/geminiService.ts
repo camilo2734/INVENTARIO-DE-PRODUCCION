@@ -24,25 +24,18 @@ export const GeminiService = {
         Intenta normalizar las unidades a 'g', 'ml' o 'units'.
       `;
 
-      const response = await const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
-      const response = await model.generateContent([
-        {
-          inlineData: {
+      const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+            const response = await model.generateContent(
+                      contents: [
+                        {
+                                      parts: [
+          {inlineData: {
             mimeType: "image/jpeg",
             data: cleanBase64
           }
         },
-        prompt
-      ]);
-
-      const text = response.response.text() || "[]";
-      // Clean up markdown code blocks if Gemini adds them
-      const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      return JSON.parse(jsonString) as InvoiceItem[];
-    } catch (error) {
-      console.error("Gemini OCR Error:", error);
-      throw new Error("No se pudo procesar la factura. Intenta de nuevo.");
-    }
-  }
-};
+        { text: prompt }
+                                                    ]
+          }
+        ]
+      });
