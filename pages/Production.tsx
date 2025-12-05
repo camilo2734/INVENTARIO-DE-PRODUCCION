@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { Ingredient, MasaRecipe, MasaRecipeItem, ProductionLog, Product } from '../types';
-import { ChefHat, History, Scale, AlertCircle, CheckCircle, Plus, Trash2, Save, PackageCheck, ArrowRight, Box } from 'lucide-react';
+import { ChefHat, History, Scale, AlertCircle, CheckCircle, Plus, Trash2, Save, PackageCheck, ArrowRight, Box, DollarSign, Calculator } from 'lucide-react';
 
 export const Production: React.FC = () => {
   const [amount, setAmount] = useState<number>(3000); // Default 3kg for Masa Calculator
@@ -62,15 +63,28 @@ export const Production: React.FC = () => {
   };
 
   const ratio = amount / recipe.baseAmount;
+  let batchTotalCost = 0;
+
   const requirements = recipe.items.map(item => {
     const ing = ingredients.find(i => i.id === item.ingredientId);
     const required = item.quantity * ratio;
     const available = ing?.quantity || 0;
     const hasEnough = available >= required;
+    
+    // Accumulate Cost for Batch Analysis
+    if(ing) batchTotalCost += (ing.cost || 0) * required;
+
     return { name: ing?.name || 'Desconocido', required, available, unit: item.unit || ing?.unit || 'g', hasEnough };
   });
 
+  const batchCostPerGram = amount > 0 ? batchTotalCost / amount : 0;
   const canProduce = requirements.every(r => r.hasEnough) && requirements.length > 0;
+
+  // Current Inventory Values
+  const masaStock = ingredients.find(i => i.id === 'masa_base');
+  const currentMasaQty = masaStock?.quantity || 0;
+  const currentMasaCost = masaStock?.cost || 0;
+  const currentMasaTotalValue = currentMasaQty * currentMasaCost;
 
   const handleProduceMasa = () => {
     if (!canProduce) return;
@@ -133,7 +147,7 @@ export const Production: React.FC = () => {
         </div>
       </header>
 
-      {/* SECTION 1: MANUFACTURE PRODUCTS (Consumes Masa) */}
+      {/* SECTION 1: MANUFACTURE PRODUCTS */}
       <section className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="bg-slate-900 p-6 flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -155,7 +169,7 @@ export const Production: React.FC = () => {
                         onChange={e => setSelectedProductId(e.target.value)}
                       >
                           <option value="">Selecciona un producto...</option>
-                          {Object.entries(groupedProducts).map(([cat, items]: [string, Product[]]) => (
+                          {Object.entries(groupedProducts).map(([cat, items]) => (
                               <optgroup label={cat} key={cat}>
                                   {items.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                               </optgroup>
@@ -229,12 +243,50 @@ export const Production: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
               <Scale className="text-orange-500" />
-              Calculadora de Masa (Pre-producción)
+              Producción de Masa Base
             </h3>
-            <p className="text-sm text-slate-500 mb-6 bg-blue-50 p-3 rounded-lg border border-blue-100">
-                Usa esta sección si quieres preparar masa y guardarla en la nevera para usar después. 
-                Si vas a fabricar productos inmediatamente, usa la sección de arriba.
-            </p>
+
+            {/* COST ANALYSIS MODULE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                {/* Card 1: Batch Analysis */}
+                <div className="bg-slate-900 text-white p-5 rounded-2xl relative overflow-hidden group">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-primary-500 rounded-full blur-2xl opacity-10 -translate-y-8 translate-x-8 group-hover:opacity-20 transition"></div>
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-2 mb-3 text-primary-400">
+                            <Calculator size={18} />
+                            <span className="text-xs font-bold uppercase tracking-wider">Costo de Este Lote ({amount}g)</span>
+                        </div>
+                        <div className="flex justify-between items-end mb-2">
+                             <span className="text-slate-400 text-sm">Costo Insumos:</span>
+                             <span className="text-xl font-bold">{batchTotalCost.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })}</span>
+                        </div>
+                        <div className="flex justify-between items-end border-t border-slate-700 pt-2">
+                             <span className="text-slate-400 text-sm">Costo por Gramo:</span>
+                             <span className="text-2xl font-bold text-white">${batchCostPerGram.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Card 2: Inventory Valuation */}
+                <div className="bg-white border-2 border-slate-100 p-5 rounded-2xl text-slate-800">
+                     <div className="flex items-center gap-2 mb-3 text-slate-400">
+                        <Box size={18} />
+                        <span className="text-xs font-bold uppercase tracking-wider">Inventario Actual (Masa)</span>
+                    </div>
+                     <div className="flex justify-between items-end mb-1">
+                        <span className="text-sm font-medium">Disponible:</span>
+                        <span className="font-bold">{currentMasaQty.toLocaleString()} g</span>
+                    </div>
+                    <div className="flex justify-between items-end mb-1">
+                        <span className="text-sm font-medium">Costo Promedio:</span>
+                        <span className="font-bold text-primary-600">${currentMasaCost.toFixed(2)} /g</span>
+                    </div>
+                    <div className="flex justify-between items-end border-t border-slate-100 pt-2 mt-1">
+                        <span className="text-sm font-bold text-slate-500 uppercase">Valor Total:</span>
+                        <span className="font-bold text-xl">{currentMasaTotalValue.toLocaleString('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 })}</span>
+                    </div>
+                </div>
+            </div>
 
             <div className="mb-8">
               <label className="block text-sm font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -287,7 +339,7 @@ export const Production: React.FC = () => {
             >
               {canProduce ? (
                 <>
-                  <Plus size={20} /> Crear Stock de Masa
+                  <Plus size={20} /> Crear Stock de Masa (Actualizar Costos)
                 </>
               ) : (
                 <>

@@ -127,36 +127,30 @@ export const StorageService = {
       const list = JSON.parse(raw);
       if (!Array.isArray(list)) return [];
 
-      // --- AUTO-CALCULAR COSTO DE MASA BASE ---
+      // --- RECUPERACIÓN DE COSTO (FALLBACK) ---
+      // Solo recalculamos si el costo actual es 0 (ej: primer inicio).
+      // Si ya tiene un costo, respetamos el Promedio Ponderado almacenado por la producción.
       const masaIndex = list.findIndex((i: Ingredient) => i.id === 'masa_base');
       
-      const recipeRaw = localStorage.getItem(KEYS.MASA_RECIPE);
-      let recipe = defaultMasaRecipe;
-      if (recipeRaw) {
-          try { recipe = JSON.parse(recipeRaw); } catch(e) { console.error("Error parsing recipe", e); }
-      }
+      if (masaIndex >= 0 && (list[masaIndex].cost === 0 || list[masaIndex].cost === undefined)) {
+          const recipeRaw = localStorage.getItem(KEYS.MASA_RECIPE);
+          let recipe = defaultMasaRecipe;
+          if (recipeRaw) {
+              try { recipe = JSON.parse(recipeRaw); } catch(e) { console.error("Error parsing recipe", e); }
+          }
 
-      if (masaIndex >= 0 && recipe && recipe.baseAmount > 0) {
-          let totalBatchCost = 0;
-          recipe.items.forEach((item: any) => {
-              const rawIng = list.find((i: Ingredient) => i.id === item.ingredientId);
-              if (rawIng && typeof rawIng.cost === 'number') {
-                  totalBatchCost += (rawIng.cost * item.quantity);
-              }
-          });
+          if (recipe && recipe.baseAmount > 0) {
+              let totalBatchCost = 0;
+              recipe.items.forEach((item: any) => {
+                  const rawIng = list.find((i: Ingredient) => i.id === item.ingredientId);
+                  if (rawIng && typeof rawIng.cost === 'number') {
+                      totalBatchCost += (rawIng.cost * item.quantity);
+                  }
+              });
 
-          const calculatedCost = totalBatchCost / recipe.baseAmount;
-          
-          // Safety: Update only if finite and different
-          if (Number.isFinite(calculatedCost)) {
-              const currentCost = list[masaIndex].cost || 0;
-              // Update local variable for return
-              list[masaIndex].cost = calculatedCost;
-              
-              // Only save back if the difference is significant AND it wasn't zero (to avoid loops if logic fails, 
-              // though here we want to ensure cache is hot)
-              // Actually, we just return the calculated list. We save back only if necessary.
-              if (Math.abs(currentCost - calculatedCost) > 0.0001) {
+              const calculatedCost = totalBatchCost / recipe.baseAmount;
+              if (Number.isFinite(calculatedCost)) {
+                  list[masaIndex].cost = calculatedCost;
                   localStorage.setItem(KEYS.INGREDIENTS, JSON.stringify(list));
               }
           }
@@ -168,11 +162,6 @@ export const StorageService = {
     }
   },
   saveIngredient: (ingredient: Ingredient) => {
-    // FIX 1: Force masa_base cost to 0 so it always recalculates dynamically on get()
-    if (ingredient.id === 'masa_base') {
-        ingredient.cost = 0;
-    }
-
     const list = StorageService.getIngredients();
     const index = list.findIndex(i => i.id === ingredient.id);
     if (index >= 0) list[index] = ingredient;
@@ -329,49 +318,68 @@ export const StorageService = {
   },
 
   produceMasa: (amountToProduce: number) => {
+    if (amountToProduce <= 0) return;
+
+    // 1. Fetch ALL fresh data to memory (avoid stale read/write loops)
     const recipe = StorageService.getMasaRecipe();
-    const ingredients = StorageService.getIngredients();
+    let ingredients = StorageService.getIngredients(); // This is our working copy
     const ratio = amountToProduce / recipe.baseAmount;
 
-    let totalCostOfIngredients = 0;
+    let totalCostOfNewBatch = 0;
+    const movementsToLog: InventoryMovement[] = [];
 
+    // 2. Consume Ingredients & Calculate Batch Cost
     recipe.items.forEach(item => {
       const requiredAmount = item.quantity * ratio;
-      const ing = ingredients.find(i => i.id === item.ingredientId);
+      // Find ingredient in our working copy
+      const ingIndex = ingredients.findIndex(i => i.id === item.ingredientId);
       
-      if (ing) {
-        totalCostOfIngredients += ((ing.cost || 0) * requiredAmount);
-        StorageService.updateStock(ing.id, -requiredAmount);
+      if (ingIndex >= 0) {
+        const ing = ingredients[ingIndex];
+        const cost = ing.cost || 0;
         
-        StorageService.logMovement({
+        // Accumulate cost
+        totalCostOfNewBatch += (cost * requiredAmount);
+        
+        // Decrease stock in working copy
+        ingredients[ingIndex].quantity -= requiredAmount;
+        
+        // Prepare log
+        movementsToLog.push({
             id: Date.now().toString() + Math.random(),
             date: new Date().toISOString(),
             type: 'PRODUCTION',
             ingredientId: ing.id,
             quantity: requiredAmount,
-            description: `Producción Masa: ${amountToProduce}g`
+            description: `Usado en Masa: ${amountToProduce}g`
         });
       }
     });
 
-    const masaIng = ingredients.find(i => i.id === 'masa_base');
-    if (masaIng) {
-        const currentTotalValue = masaIng.quantity * (masaIng.cost || 0);
-        const newBatchValue = totalCostOfIngredients;
-        const newTotalQuantity = masaIng.quantity + amountToProduce;
+    // 3. Update Masa Base (Weighted Average Logic)
+    const masaIndex = ingredients.findIndex(i => i.id === 'masa_base');
+    
+    if (masaIndex >= 0) {
+        const masaIng = ingredients[masaIndex];
         
-        let newCost = masaIng.cost;
-        if (newTotalQuantity > 0) {
-            newCost = (currentTotalValue + newBatchValue) / newTotalQuantity;
+        const oldTotalValue = masaIng.quantity * (masaIng.cost || 0);
+        const newTotalQty = masaIng.quantity + amountToProduce;
+        
+        let newAvgCost = masaIng.cost; // Default to old cost if calculation fails
+        
+        // Formula: (OldVal + NewBatchVal) / TotalQty
+        if (newTotalQty > 0) {
+             const newTotalValue = oldTotalValue + totalCostOfNewBatch;
+             newAvgCost = newTotalValue / newTotalQty;
         } else if (amountToProduce > 0) {
-            newCost = newBatchValue / amountToProduce;
+            newAvgCost = totalCostOfNewBatch / amountToProduce;
         }
 
-        masaIng.quantity = newTotalQuantity;
-        masaIng.cost = newCost;
-        StorageService.saveIngredient(masaIng);
-
-        StorageService.logMovement({
+        // Apply updates to working copy
+        ingredients[masaIndex].quantity = newTotalQty;
+        ingredients[masaIndex].cost = newAvgCost;
+        
+        movementsToLog.push({
             id: Date.now().toString() + Math.random(),
             date: new Date().toISOString(),
             type: 'PRODUCTION',
@@ -381,12 +389,20 @@ export const StorageService = {
         });
     }
 
+    // 4. ATOMIC SAVE: Save the entire updated ingredients list at once
+    localStorage.setItem(KEYS.INGREDIENTS, JSON.stringify(ingredients));
+
+    // 5. Append Movements
+    const currentMovements = StorageService.getMovements();
+    localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([...currentMovements, ...movementsToLog]));
+
+    // 6. Update Production Logs
     const logs = StorageService.getProductionLogs();
     logs.unshift({
         id: Date.now().toString(),
         date: new Date().toISOString(),
         amountProduced: amountToProduce,
-        costPerGram: amountToProduce > 0 ? totalCostOfIngredients / amountToProduce : 0
+        costPerGram: amountToProduce > 0 ? totalCostOfNewBatch / amountToProduce : 0
     });
     localStorage.setItem(KEYS.PRODUCTION_LOGS, JSON.stringify(logs));
   },
