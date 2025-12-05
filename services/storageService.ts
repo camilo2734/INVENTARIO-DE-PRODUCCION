@@ -150,8 +150,13 @@ export const StorageService = {
           // Safety: Update only if finite and different
           if (Number.isFinite(calculatedCost)) {
               const currentCost = list[masaIndex].cost || 0;
+              // Update local variable for return
+              list[masaIndex].cost = calculatedCost;
+              
+              // Only save back if the difference is significant AND it wasn't zero (to avoid loops if logic fails, 
+              // though here we want to ensure cache is hot)
+              // Actually, we just return the calculated list. We save back only if necessary.
               if (Math.abs(currentCost - calculatedCost) > 0.0001) {
-                  list[masaIndex].cost = calculatedCost;
                   localStorage.setItem(KEYS.INGREDIENTS, JSON.stringify(list));
               }
           }
@@ -163,6 +168,11 @@ export const StorageService = {
     }
   },
   saveIngredient: (ingredient: Ingredient) => {
+    // FIX 1: Force masa_base cost to 0 so it always recalculates dynamically on get()
+    if (ingredient.id === 'masa_base') {
+        ingredient.cost = 0;
+    }
+
     const list = StorageService.getIngredients();
     const index = list.findIndex(i => i.id === ingredient.id);
     if (index >= 0) list[index] = ingredient;

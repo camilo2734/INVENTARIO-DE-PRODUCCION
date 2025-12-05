@@ -56,9 +56,22 @@ export const Inventory: React.FC = () => {
     }
   };
   const handleProductStockChange = (productId: string, newStock: number) => {
-    const updatedProducts = products.map(p => p.id === productId ? { ...p, stock: Math.max(0, newStock) } : p);
-    setProducts(updatedProducts);
-    StorageService.updateProductStock(productId, newStock);
+    const product = products.find(p => p.id === productId);
+    if (!product) return;
+
+    const delta = newStock - product.stock;
+
+    if (delta > 0) {
+        // FIX 2: Increasing stock triggers manufacturing logic (consuming ingredients)
+        StorageService.manufactureProduct(productId, delta);
+    } else {
+        // Decreasing stock remains a simple manual adjustment (waste/correction)
+        // to avoid double counting or complex reversal logic
+        StorageService.updateProductStock(productId, newStock);
+    }
+    
+    // Refresh full state to show ingredient deductions
+    refresh();
   };
 
   // --- SECTIONS ---
