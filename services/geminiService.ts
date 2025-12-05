@@ -25,27 +25,25 @@ export const GeminiService = {
       `;
 
       const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
-            const response = await model.generateContent(
-                      contents: [
-                        {
-                                      parts: [
-          {inlineData: {
+      
+      const result = await model.generateContent([
+        {
+          inlineData: {
+            data: cleanBase64,
             mimeType: "image/jpeg",
-            data: cleanBase64
-          }
+          },
         },
-        { text: prompt }
-                                                    ]
-          }
-        ]
-      });
+        prompt,
+      ]);
 
-            const text = response.response.text() || "[]";
+      const text = result.response.text() || "[]";
       // Clean up markdown code blocks if Gemini adds them
       const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
       
       return JSON.parse(jsonString) as InvoiceItem[];
-          } catch (error) {
+    } catch (error) {
       console.error("Gemini OCR Error:", error);
       throw new Error("No se pudo procesar la factura. Intenta de nuevo.");
     }
+  },
+};
