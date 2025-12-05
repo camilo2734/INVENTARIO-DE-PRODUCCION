@@ -11,6 +11,18 @@ export interface Ingredient {
   minThreshold: number; // alert when below this
 }
 
+export interface Purchase {
+  id: string;
+  date: string; // ISO String YYYY-MM-DD
+  ingredientId: string;
+  ingredientName: string;
+  quantity: number;
+  unit: string;
+  totalCost: number;
+  notes?: string;
+  timestamp: number;
+}
+
 export interface RecipeItem {
   ingredientId: string;
   quantity: number; // Amount needed for 1 product

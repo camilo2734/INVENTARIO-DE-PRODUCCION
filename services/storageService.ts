@@ -1,5 +1,5 @@
 
-import { Ingredient, Product, Sale, InventoryMovement, MasaRecipe, ProductionLog } from '../types';
+import { Ingredient, Product, Sale, InventoryMovement, MasaRecipe, ProductionLog, Purchase } from '../types';
 
 /**
  * Storage Service
@@ -13,7 +13,8 @@ const KEYS = {
   SALES: 'umami_sales_v2',
   MOVEMENTS: 'umami_movements_v2',
   MASA_RECIPE: 'umami_masa_recipe_v1',
-  PRODUCTION_LOGS: 'umami_production_logs_v1'
+  PRODUCTION_LOGS: 'umami_production_logs_v1',
+  PURCHASES: 'umami_purchases_v1'
 };
 
 // --- SEED DATA: LEVEL 1 & 2 (Updated to COP prices) ---
@@ -113,6 +114,9 @@ export const StorageService = {
     if (!localStorage.getItem(KEYS.MOVEMENTS)) {
       localStorage.setItem(KEYS.MOVEMENTS, JSON.stringify([]));
     }
+    if (!localStorage.getItem(KEYS.PURCHASES)) {
+      localStorage.setItem(KEYS.PURCHASES, JSON.stringify([]));
+    }
   },
 
   // Ingredients
@@ -199,6 +203,59 @@ export const StorageService = {
   },
   getMovements: (): InventoryMovement[] => {
     return JSON.parse(localStorage.getItem(KEYS.MOVEMENTS) || '[]');
+  },
+
+  // Purchases
+  getPurchases: (): Purchase[] => {
+    return JSON.parse(localStorage.getItem(KEYS.PURCHASES) || '[]');
+  },
+  
+  savePurchase: (purchase: Purchase) => {
+    const list = StorageService.getPurchases();
+    list.push(purchase);
+    localStorage.setItem(KEYS.PURCHASES, JSON.stringify(list));
+
+    // Update Ingredient Stock and Weighted Average Cost
+    const ingredients = StorageService.getIngredients();
+    const ing = ingredients.find(i => i.id === purchase.ingredientId);
+    
+    if (ing) {
+        // Weighted Average Cost Calculation
+        // New Cost = ((Old Qty * Old Cost) + (New Total Price)) / (Old Qty + New Qty)
+        // Note: purchase.totalCost is total price paid. purchase.quantity is amount bought.
+        
+        const currentTotalValue = ing.quantity * ing.cost;
+        const newTotalQty = ing.quantity + purchase.quantity;
+        
+        if (newTotalQty > 0) {
+            ing.cost = (currentTotalValue + purchase.totalCost) / newTotalQty;
+        } else {
+             // Fallback if starting from 0 (though quantity just increased, so this branch is rare)
+             ing.cost = purchase.totalCost / purchase.quantity;
+        }
+
+        ing.quantity = newTotalQty;
+        StorageService.saveIngredient(ing);
+
+        // Log Movement
+        StorageService.logMovement({
+            id: Date.now().toString() + Math.random(),
+            date: purchase.date, // Use purchase date
+            type: 'IN',
+            ingredientId: ing.id,
+            quantity: purchase.quantity,
+            description: `Compra: ${purchase.quantity}${purchase.unit}`
+        });
+    }
+  },
+
+  deletePurchase: (id: string) => {
+      // Note: Deleting a purchase does NOT revert stock automatically in this simple version
+      // to avoid negative stocks or complex cost reversion issues.
+      // It just removes the record from the history view.
+      const list = StorageService.getPurchases();
+      const newList = list.filter(p => p.id !== id);
+      localStorage.setItem(KEYS.PURCHASES, JSON.stringify(newList));
   },
 
   // --- MASA PRODUCTION LOGIC ---
