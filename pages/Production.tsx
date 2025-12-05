@@ -39,7 +39,8 @@ export const Production: React.FC = () => {
     // Default to the first base ingredient found
     const firstBase = ingredients.find(i => i.type === 'BASE')?.id || ingredients[0]?.id || '';
     
-    const newItems = [...recipe.items, { ingredientId: firstBase, quantity: 10 }];
+    // Default unit 'g'
+    const newItems = [...recipe.items, { ingredientId: firstBase, quantity: 10, unit: 'g' }];
     const newRecipe = { ...recipe, items: newItems };
     setRecipe(newRecipe);
     StorageService.saveMasaRecipe(newRecipe);
@@ -72,7 +73,7 @@ export const Production: React.FC = () => {
       name: ing?.name || 'Desconocido',
       required,
       available,
-      unit: ing?.unit || 'g',
+      unit: item.unit || ing?.unit || 'g', // Use recipe unit, fallback to ingredient unit
       hasEnough
     };
   });
@@ -221,7 +222,19 @@ export const Production: React.FC = () => {
                                 onChange={(e) => handleRecipeChange(idx, 'quantity', parseFloat(e.target.value))}
                             />
                        </div>
-                       <span className="text-xs text-slate-500 font-bold w-4">g</span>
+                       
+                       {/* Unit Selector (Previously static 'g') */}
+                       <select 
+                            className="w-10 bg-transparent text-slate-500 font-bold text-xs border-none outline-none appearance-none cursor-pointer hover:text-white text-center"
+                            value={item.unit || ingredients.find(i => i.id === item.ingredientId)?.unit || 'g'}
+                            onChange={(e) => handleRecipeChange(idx, 'unit', e.target.value)}
+                       >
+                           <option value="g">g</option>
+                           <option value="ml">ml</option>
+                           <option value="kg">kg</option>
+                           <option value="l">l</option>
+                           <option value="units">ud</option>
+                       </select>
 
                        {/* Delete Button */}
                        <button 

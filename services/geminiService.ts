@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { InvoiceItem } from "../types";
 
-const ai = new GoogleGenerativeAI(import.meta.env.VITE_API_KEY as string);
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const GeminiService = {
   /**
@@ -15,35 +15,50 @@ export const GeminiService = {
       const prompt = `
         Analiza esta imagen de una factura de compra de insumos de restaurante.
         Extrae los items comprados.
-        Devuelve SOLO un array JSON válido sin markdown.
-        Formato esperado:
-        [
-          { "name": "nombre del producto", "quantity": número, "unit": "g, kg, ml, l, o unidad", "cost": costo_unitario_estimado }
-        ]
         Si la unidad está en kg, conviértela a gramos. Si está en Litros, a ml.
         Intenta normalizar las unidades a 'g', 'ml' o 'units'.
       `;
 
-      const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
-      
-      const result = await model.generateContent([
-        {
-          inlineData: {
-            data: cleanBase64,
-            mimeType: "image/jpeg",
-          },
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: {
+          parts: [
+            {
+              inlineData: {
+                mimeType: "image/jpeg",
+                data: cleanBase64
+              }
+            },
+            {
+              text: prompt
+            }
+          ]
         },
-        prompt,
-      ]);
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                quantity: { type: Type.NUMBER },
+                unit: { type: Type.STRING },
+                cost: { type: Type.NUMBER }
+              },
+              required: ["name", "quantity", "unit", "cost"],
+            },
+          },
+        }
+      });
 
-      const text = result.response.text() || "[]";
-      // Clean up markdown code blocks if Gemini adds them
-      const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
-      
-      return JSON.parse(jsonString) as InvoiceItem[];
+      const text = response.text;
+      if (!text) return [];
+
+      return JSON.parse(text) as InvoiceItem[];
     } catch (error) {
       console.error("Gemini OCR Error:", error);
       throw new Error("No se pudo procesar la factura. Intenta de nuevo.");
     }
-  },
+  }
 };

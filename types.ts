@@ -54,6 +54,7 @@ export interface InvoiceItem {
 export interface MasaRecipeItem {
   ingredientId: string;
   quantity: number; 
+  unit?: string; // Ahora permite guardar la unidad específica para esta receta
 }
 
 export interface MasaRecipe {
