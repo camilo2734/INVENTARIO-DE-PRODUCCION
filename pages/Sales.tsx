@@ -33,20 +33,10 @@ export const Sales: React.FC = () => {
     const product = products.find(p => p.id === selectedProduct);
     if (!product) return;
 
-    // VALIDATION: Check Masa & Ingredient availability
-    for (const item of product.recipe) {
-        const ing = ingredients.find(i => i.id === item.ingredientId);
-        const needed = item.quantity * quantity;
-        
-        if (!ing || ing.quantity < needed) {
-            const name = ing?.name || 'Ingrediente desconocido';
-            if (ing?.id === 'masa_base') {
-                setErrorMsg(`⚠️ No hay suficiente MASA. Faltan ${(needed - (ing?.quantity || 0))}g. Debes producir masa antes de vender.`);
-            } else {
-                setErrorMsg(`⚠️ Stock insuficiente de: ${name}. Faltan ${needed - (ing?.quantity || 0)} ${ing?.unit}.`);
-            }
-            return;
-        }
+    // VALIDATION MODIFIED: Check PRODUCT STOCK instead of ingredients
+    if (product.stock < quantity) {
+        setErrorMsg(`⚠️ Stock insuficiente de producto terminado: "${product.name}". Tienes ${product.stock}, intentas vender ${quantity}. Agrega stock en la sección Inventario primero.`);
+        return;
     }
 
     // Process Sale
@@ -70,7 +60,7 @@ export const Sales: React.FC = () => {
   };
 
   const handleDeleteSale = (saleId: string) => {
-    if (window.confirm("¿Estás seguro de que deseas eliminar esta venta? El stock de los ingredientes se devolverá al inventario.")) {
+    if (window.confirm("¿Estás seguro de que deseas eliminar esta venta? El stock del producto se devolverá al inventario.")) {
         StorageService.deleteSale(saleId);
         refreshData();
     }
@@ -108,7 +98,7 @@ export const Sales: React.FC = () => {
                     <optgroup key={category} label={category} className="bg-slate-800 text-primary-200 font-bold">
                       {items.map(p => (
                         <option key={p.id} value={p.id} className="bg-slate-900 text-white font-normal">
-                          {p.name} — ${p.price.toLocaleString()}
+                          {p.name} (Stock: {p.stock}) — ${p.price.toLocaleString()}
                         </option>
                       ))}
                     </optgroup>
@@ -134,9 +124,7 @@ export const Sales: React.FC = () => {
                     <AlertOctagon className="shrink-0 mt-0.5" size={16} />
                     <div>
                         <p>{errorMsg}</p>
-                        {errorMsg.includes('MASA') && (
-                            <Link to="/production" className="text-red-900 underline font-bold mt-1 block">Ir a Producción →</Link>
-                        )}
+                        <Link to="/inventory" className="text-red-900 underline font-bold mt-1 block">Ir a Inventario →</Link>
                     </div>
                 </div>
             )}

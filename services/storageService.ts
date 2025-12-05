@@ -174,21 +174,9 @@ export const StorageService = {
     const products = StorageService.getProducts();
     const product = products.find(p => p.id === sale.productId);
     
+    // MODIFICADO: Ahora descuenta del stock de PRODUCTO TERMINADO, no de los ingredientes.
     if (product) {
-      product.recipe.forEach(item => {
-        const totalDeduction = item.quantity * sale.quantity;
-        StorageService.updateStock(item.ingredientId, -totalDeduction);
-        
-        // Log "Consume" movement
-        StorageService.logMovement({
-          id: Date.now().toString() + Math.random(),
-          date: new Date().toISOString(),
-          type: 'OUT',
-          ingredientId: item.ingredientId,
-          quantity: totalDeduction,
-          description: `Venta: ${sale.quantity}x ${product.name}`
-        });
-      });
+      StorageService.updateProductStock(product.id, product.stock - sale.quantity);
     }
   },
   
@@ -206,22 +194,9 @@ export const StorageService = {
     const products = StorageService.getProducts();
     const product = products.find(p => p.id === sale.productId);
 
-    // 1. Revert Stock (Add ingredients back)
+    // MODIFICADO: Ahora devuelve el stock al PRODUCTO TERMINADO.
     if (product) {
-      product.recipe.forEach(item => {
-        const totalRestored = item.quantity * sale.quantity;
-        StorageService.updateStock(item.ingredientId, totalRestored);
-        
-        // Log "Restock" movement
-        StorageService.logMovement({
-          id: Date.now().toString() + Math.random(),
-          date: new Date().toISOString(),
-          type: 'IN', // Treating as IN because stock is returning
-          ingredientId: item.ingredientId,
-          quantity: totalRestored,
-          description: `Corrección Venta: ${sale.quantity}x ${product.name}`
-        });
-      });
+        StorageService.updateProductStock(product.id, product.stock + sale.quantity);
     }
 
     // 2. Remove Sale record
