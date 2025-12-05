@@ -281,6 +281,12 @@ export const StorageService = {
     return JSON.parse(localStorage.getItem(KEYS.PRODUCTION_LOGS) || '[]');
   },
 
+  // NEW: Clear logs only
+  clearProductionLogs: () => {
+    localStorage.setItem(KEYS.PRODUCTION_LOGS, JSON.stringify([]));
+  },
+
+  // Produces Masa Stock (Pre-production)
   produceMasa: (amountToProduce: number) => {
     const recipe = StorageService.getMasaRecipe();
     const ingredients = StorageService.getIngredients();
@@ -348,5 +354,69 @@ export const StorageService = {
         costPerGram: totalCostOfIngredients / amountToProduce
     });
     localStorage.setItem(KEYS.PRODUCTION_LOGS, JSON.stringify(logs));
+  },
+
+  // NEW: Manufacture Final Products (Consumes Masa & Fillings -> Adds Product Stock)
+  manufactureProduct: (productId: string, quantityToMake: number) => {
+      const product = StorageService.getProducts().find(p => p.id === productId);
+      if (!product) return;
+
+      const ingredients = StorageService.getIngredients();
+      const masaRecipe = StorageService.getMasaRecipe();
+      let consumedDetails = [];
+
+      // 1. Process Product Recipe
+      product.recipe.forEach(item => {
+          if (item.ingredientId === 'masa_base') {
+              // SPECIAL MASA LOGIC
+              const totalMasaNeeded = item.quantity * quantityToMake;
+              const masaStock = ingredients.find(i => i.id === 'masa_base');
+              
+              if (masaStock) {
+                  if (masaStock.quantity >= totalMasaNeeded) {
+                      // Option A: Sufficient Masa Stock. Deduct it.
+                      StorageService.updateStock('masa_base', -totalMasaNeeded);
+                      consumedDetails.push(`${totalMasaNeeded}g Masa (Stock)`);
+                  } else {
+                      // Option B: Insufficient Stock. Use what we have + Auto-produce the rest from raw ingredients.
+                      const available = masaStock.quantity;
+                      const deficit = totalMasaNeeded - available;
+
+                      // Consume all available stock
+                      if (available > 0) {
+                         StorageService.updateStock('masa_base', -available);
+                      }
+
+                      // Deduct RAW ingredients for the deficit amount
+                      const ratio = deficit / masaRecipe.baseAmount;
+                      masaRecipe.items.forEach(raw => {
+                          const neededRaw = raw.quantity * ratio;
+                          StorageService.updateStock(raw.ingredientId, -neededRaw);
+                      });
+
+                      consumedDetails.push(`${available.toFixed(0)}g Masa (Stock) + ${deficit.toFixed(0)}g Masa (Producida al instante)`);
+                  }
+              }
+          } else {
+              // Standard Ingredient (Filling, Packaging)
+              const totalNeeded = item.quantity * quantityToMake;
+              StorageService.updateStock(item.ingredientId, -totalNeeded);
+              const ingName = ingredients.find(i => i.id === item.ingredientId)?.name || item.ingredientId;
+              consumedDetails.push(`${totalNeeded} ${ingName}`);
+          }
+      });
+
+      // 2. Add Finished Product Stock
+      StorageService.updateProductStock(productId, product.stock + quantityToMake);
+
+      // 3. Log
+      StorageService.logMovement({
+          id: Date.now().toString(),
+          date: new Date().toISOString(),
+          type: 'PRODUCTION',
+          ingredientId: 'PRODUCT_MANUFACTURE',
+          quantity: quantityToMake,
+          description: `Fabricación: ${quantityToMake}x ${product.name}. Usado: ${consumedDetails.join(', ')}`
+      });
   }
 };
