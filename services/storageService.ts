@@ -121,7 +121,46 @@ export const StorageService = {
 
   // Ingredients
   getIngredients: (): Ingredient[] => {
-    return JSON.parse(localStorage.getItem(KEYS.INGREDIENTS) || '[]');
+    try {
+      const raw = localStorage.getItem(KEYS.INGREDIENTS);
+      if (!raw) return [];
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return [];
+
+      // --- AUTO-CALCULAR COSTO DE MASA BASE ---
+      const masaIndex = list.findIndex((i: Ingredient) => i.id === 'masa_base');
+      
+      const recipeRaw = localStorage.getItem(KEYS.MASA_RECIPE);
+      let recipe = defaultMasaRecipe;
+      if (recipeRaw) {
+          try { recipe = JSON.parse(recipeRaw); } catch(e) { console.error("Error parsing recipe", e); }
+      }
+
+      if (masaIndex >= 0 && recipe && recipe.baseAmount > 0) {
+          let totalBatchCost = 0;
+          recipe.items.forEach((item: any) => {
+              const rawIng = list.find((i: Ingredient) => i.id === item.ingredientId);
+              if (rawIng && typeof rawIng.cost === 'number') {
+                  totalBatchCost += (rawIng.cost * item.quantity);
+              }
+          });
+
+          const calculatedCost = totalBatchCost / recipe.baseAmount;
+          
+          // Safety: Update only if finite and different
+          if (Number.isFinite(calculatedCost)) {
+              const currentCost = list[masaIndex].cost || 0;
+              if (Math.abs(currentCost - calculatedCost) > 0.0001) {
+                  list[masaIndex].cost = calculatedCost;
+                  localStorage.setItem(KEYS.INGREDIENTS, JSON.stringify(list));
+              }
+          }
+      }
+      return list;
+    } catch (e) {
+      console.error("Critical error in getIngredients:", e);
+      return [];
+    }
   },
   saveIngredient: (ingredient: Ingredient) => {
     const list = StorageService.getIngredients();
@@ -146,8 +185,13 @@ export const StorageService = {
 
   // Products
   getProducts: (): Product[] => {
-    const products = JSON.parse(localStorage.getItem(KEYS.PRODUCTS) || '[]');
-    return products.map((p: Product) => ({...p, stock: p.stock ?? 0}));
+    try {
+        const raw = localStorage.getItem(KEYS.PRODUCTS);
+        if (!raw) return [];
+        const products = JSON.parse(raw);
+        if (!Array.isArray(products)) return [];
+        return products.map((p: Product) => ({...p, stock: p.stock ?? 0}));
+    } catch { return []; }
   },
   saveProduct: (product: Product) => {
     const list = StorageService.getProducts();
@@ -174,7 +218,6 @@ export const StorageService = {
     const products = StorageService.getProducts();
     const product = products.find(p => p.id === sale.productId);
     
-    // MODIFICADO: Ahora descuenta del stock de PRODUCTO TERMINADO, no de los ingredientes.
     if (product) {
       StorageService.updateProductStock(product.id, product.stock - sale.quantity);
     }
@@ -194,12 +237,9 @@ export const StorageService = {
     const products = StorageService.getProducts();
     const product = products.find(p => p.id === sale.productId);
 
-    // MODIFICADO: Ahora devuelve el stock al PRODUCTO TERMINADO.
     if (product) {
         StorageService.updateProductStock(product.id, product.stock + sale.quantity);
     }
-
-    // 2. Remove Sale record
     sales.splice(saleIndex, 1);
     localStorage.setItem(KEYS.SALES, JSON.stringify(sales));
   },
@@ -229,27 +269,23 @@ export const StorageService = {
     const ing = ingredients.find(i => i.id === purchase.ingredientId);
     
     if (ing) {
-        // Weighted Average Cost Calculation
-        // New Cost = ((Old Qty * Old Cost) + (New Total Price)) / (Old Qty + New Qty)
-        // Note: purchase.totalCost is total price paid. purchase.quantity is amount bought.
-        
-        const currentTotalValue = ing.quantity * ing.cost;
+        const currentTotalValue = ing.quantity * (ing.cost || 0);
         const newTotalQty = ing.quantity + purchase.quantity;
         
+        let newCost = ing.cost;
         if (newTotalQty > 0) {
-            ing.cost = (currentTotalValue + purchase.totalCost) / newTotalQty;
-        } else {
-             // Fallback if starting from 0 (though quantity just increased, so this branch is rare)
-             ing.cost = purchase.totalCost / purchase.quantity;
+            newCost = (currentTotalValue + purchase.totalCost) / newTotalQty;
+        } else if (purchase.quantity > 0) {
+             newCost = purchase.totalCost / purchase.quantity;
         }
 
         ing.quantity = newTotalQty;
+        ing.cost = newCost;
         StorageService.saveIngredient(ing);
 
-        // Log Movement
         StorageService.logMovement({
             id: Date.now().toString() + Math.random(),
-            date: purchase.date, // Use purchase date
+            date: purchase.date,
             type: 'IN',
             ingredientId: ing.id,
             quantity: purchase.quantity,
@@ -259,9 +295,6 @@ export const StorageService = {
   },
 
   deletePurchase: (id: string) => {
-      // Note: Deleting a purchase does NOT revert stock automatically in this simple version
-      // to avoid negative stocks or complex cost reversion issues.
-      // It just removes the record from the history view.
       const list = StorageService.getPurchases();
       const newList = list.filter(p => p.id !== id);
       localStorage.setItem(KEYS.PURCHASES, JSON.stringify(newList));
@@ -281,12 +314,10 @@ export const StorageService = {
     return JSON.parse(localStorage.getItem(KEYS.PRODUCTION_LOGS) || '[]');
   },
 
-  // NEW: Clear logs only
   clearProductionLogs: () => {
     localStorage.setItem(KEYS.PRODUCTION_LOGS, JSON.stringify([]));
   },
 
-  // Produces Masa Stock (Pre-production)
   produceMasa: (amountToProduce: number) => {
     const recipe = StorageService.getMasaRecipe();
     const ingredients = StorageService.getIngredients();
@@ -294,19 +325,14 @@ export const StorageService = {
 
     let totalCostOfIngredients = 0;
 
-    // 1. Deduct Ingredients
     recipe.items.forEach(item => {
       const requiredAmount = item.quantity * ratio;
       const ing = ingredients.find(i => i.id === item.ingredientId);
       
       if (ing) {
-        // Calculate cost for this portion
-        totalCostOfIngredients += (ing.cost * requiredAmount);
-
-        // Update Stock in DB
+        totalCostOfIngredients += ((ing.cost || 0) * requiredAmount);
         StorageService.updateStock(ing.id, -requiredAmount);
         
-        // Log movement
         StorageService.logMovement({
             id: Date.now().toString() + Math.random(),
             date: new Date().toISOString(),
@@ -318,23 +344,23 @@ export const StorageService = {
       }
     });
 
-    // 2. Add Masa to Stock
     const masaIng = ingredients.find(i => i.id === 'masa_base');
     if (masaIng) {
-        // Calculate new weighted average cost
-        const currentTotalValue = masaIng.quantity * masaIng.cost;
+        const currentTotalValue = masaIng.quantity * (masaIng.cost || 0);
         const newBatchValue = totalCostOfIngredients;
         const newTotalQuantity = masaIng.quantity + amountToProduce;
         
-        const newCost = newTotalQuantity > 0 
-            ? (currentTotalValue + newBatchValue) / newTotalQuantity
-            : (newBatchValue / amountToProduce);
+        let newCost = masaIng.cost;
+        if (newTotalQuantity > 0) {
+            newCost = (currentTotalValue + newBatchValue) / newTotalQuantity;
+        } else if (amountToProduce > 0) {
+            newCost = newBatchValue / amountToProduce;
+        }
 
         masaIng.quantity = newTotalQuantity;
         masaIng.cost = newCost;
         StorageService.saveIngredient(masaIng);
 
-        // Log Masa IN
         StorageService.logMovement({
             id: Date.now().toString() + Math.random(),
             date: new Date().toISOString(),
@@ -345,49 +371,41 @@ export const StorageService = {
         });
     }
 
-    // 3. Log Production Record
     const logs = StorageService.getProductionLogs();
     logs.unshift({
         id: Date.now().toString(),
         date: new Date().toISOString(),
         amountProduced: amountToProduce,
-        costPerGram: totalCostOfIngredients / amountToProduce
+        costPerGram: amountToProduce > 0 ? totalCostOfIngredients / amountToProduce : 0
     });
     localStorage.setItem(KEYS.PRODUCTION_LOGS, JSON.stringify(logs));
   },
 
-  // NEW: Manufacture Final Products (Consumes Masa & Fillings -> Adds Product Stock)
   manufactureProduct: (productId: string, quantityToMake: number) => {
       const product = StorageService.getProducts().find(p => p.id === productId);
       if (!product) return;
 
       const ingredients = StorageService.getIngredients();
       const masaRecipe = StorageService.getMasaRecipe();
-      let consumedDetails = [];
+      let consumedDetails: string[] = [];
 
-      // 1. Process Product Recipe
       product.recipe.forEach(item => {
           if (item.ingredientId === 'masa_base') {
-              // SPECIAL MASA LOGIC
               const totalMasaNeeded = item.quantity * quantityToMake;
               const masaStock = ingredients.find(i => i.id === 'masa_base');
               
               if (masaStock) {
                   if (masaStock.quantity >= totalMasaNeeded) {
-                      // Option A: Sufficient Masa Stock. Deduct it.
                       StorageService.updateStock('masa_base', -totalMasaNeeded);
                       consumedDetails.push(`${totalMasaNeeded}g Masa (Stock)`);
                   } else {
-                      // Option B: Insufficient Stock. Use what we have + Auto-produce the rest from raw ingredients.
                       const available = masaStock.quantity;
                       const deficit = totalMasaNeeded - available;
 
-                      // Consume all available stock
                       if (available > 0) {
                          StorageService.updateStock('masa_base', -available);
                       }
 
-                      // Deduct RAW ingredients for the deficit amount
                       const ratio = deficit / masaRecipe.baseAmount;
                       masaRecipe.items.forEach(raw => {
                           const neededRaw = raw.quantity * ratio;
@@ -398,7 +416,6 @@ export const StorageService = {
                   }
               }
           } else {
-              // Standard Ingredient (Filling, Packaging)
               const totalNeeded = item.quantity * quantityToMake;
               StorageService.updateStock(item.ingredientId, -totalNeeded);
               const ingName = ingredients.find(i => i.id === item.ingredientId)?.name || item.ingredientId;
@@ -406,10 +423,8 @@ export const StorageService = {
           }
       });
 
-      // 2. Add Finished Product Stock
       StorageService.updateProductStock(productId, product.stock + quantityToMake);
 
-      // 3. Log
       StorageService.logMovement({
           id: Date.now().toString(),
           date: new Date().toISOString(),

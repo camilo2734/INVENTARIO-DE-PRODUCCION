@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { StorageService } from '../services/storageService';
 import { GeminiService } from '../services/geminiService';
 import { Ingredient, Product, InvoiceItem, Purchase } from '../types';
-import { Plus, Camera, Check, X, Edit2, Trash2, AlertTriangle, Package, ChefHat, Wheat, Layers, PackageCheck, Minus, Calendar, ShoppingCart, DollarSign, FileText } from 'lucide-react';
+import { Plus, Camera, Check, X, Edit2, Trash2, AlertTriangle, Package, ChefHat, Wheat, Layers, PackageCheck, Minus, Calendar, ShoppingCart, DollarSign, FileText, Lock } from 'lucide-react';
 
 export const Inventory: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'stock' | 'purchases'>('stock');
@@ -101,6 +101,8 @@ export const Inventory: React.FC = () => {
             <tbody className="divide-y divide-gray-100">
               {items.map((ing: Ingredient) => {
                 const isEditing = editingId === ing.id;
+                const isMasaBase = ing.id === 'masa_base';
+                
                 return (
                   <tr key={ing.id} className={`transition group ${isEditing ? 'bg-orange-50' : 'hover:bg-primary-50'}`}>
                     <td className="p-4 font-bold text-slate-800">{ing.name}
@@ -109,7 +111,7 @@ export const Inventory: React.FC = () => {
                     <td className="p-4 font-mono font-medium">
                         {isEditing ? (
                             <input type="number" min="0" className="w-24 border border-orange-300 rounded px-2 py-1 outline-none bg-white"
-                                value={editForm.quantity} onChange={e => setEditForm({...editForm, quantity: parseFloat(e.target.value)})} />
+                                value={editForm.quantity ?? ''} onChange={e => setEditForm({...editForm, quantity: parseFloat(e.target.value) || 0})} />
                         ) : ing.quantity}
                     </td>
                     <td className="p-4 text-slate-500 text-sm">
@@ -121,10 +123,19 @@ export const Inventory: React.FC = () => {
                         ) : ing.unit}
                     </td>
                     <td className="p-4 text-slate-500">
-                         {isEditing ? (
+                         {isEditing && isMasaBase ? (
+                             <div className="flex items-center gap-1 text-xs text-orange-600 font-bold bg-orange-100 px-2 py-1 rounded w-fit">
+                                 <Lock size={12} /> Auto
+                             </div>
+                         ) : isEditing ? (
                             <input type="number" min="0" step="0.001" className="w-24 border border-orange-300 rounded px-2 py-1 outline-none bg-white"
-                                value={editForm.cost} onChange={e => setEditForm({...editForm, cost: parseFloat(e.target.value)})} />
-                        ) : ing.cost.toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                value={editForm.cost ?? ''} onChange={e => setEditForm({...editForm, cost: parseFloat(e.target.value) || 0})} />
+                        ) : (
+                            <span>
+                                {(ing.cost || 0).toLocaleString('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 2 })}
+                                {isMasaBase && <span className="text-[10px] text-slate-400 ml-1">(Auto)</span>}
+                            </span>
+                        )}
                     </td>
                     <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-2">

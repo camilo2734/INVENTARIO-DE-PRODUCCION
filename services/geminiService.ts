@@ -1,7 +1,15 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { InvoiceItem } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let ai: GoogleGenAI | null = null;
+
+const getAi = () => {
+  if (!ai) {
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  }
+  return ai;
+}
 
 export const GeminiService = {
   /**
@@ -19,7 +27,7 @@ export const GeminiService = {
         Intenta normalizar las unidades a 'g', 'ml' o 'units'.
       `;
 
-      const response = await ai.models.generateContent({
+      const response = await getAi().models.generateContent({
         model: "gemini-2.5-flash",
         contents: {
           parts: [
