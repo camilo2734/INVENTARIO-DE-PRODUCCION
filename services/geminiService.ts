@@ -39,3 +39,13 @@ export const GeminiService = {
           }
         ]
       });
+
+            const text = response.response.text() || "[]";
+      // Clean up markdown code blocks if Gemini adds them
+      const jsonString = text.replace(/```json/g, '').replace(/```/g, '').trim();
+      
+      return JSON.parse(jsonString) as InvoiceItem[];
+          } catch (error) {
+      console.error("Gemini OCR Error:", error);
+      throw new Error("No se pudo procesar la factura. Intenta de nuevo.");
+    }
